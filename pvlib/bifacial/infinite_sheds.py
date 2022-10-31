@@ -156,7 +156,7 @@ def _vf_row_sky_integ(f_x, surface_tilt, gcr, npoints=100):
 
 
 def _poa_sky_diffuse_pv(f_x, dhi, vf_shade_sky_integ, vf_noshade_sky_integ,
-                        AI, model='isotropic'):
+                        model='isotropic', AI=None):
     """
     Sky diffuse POA from integrated view factors combined for both shaded and
     unshaded parts of the surface.
@@ -552,12 +552,11 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
         cos_solar_zenith = cosd(solar_zenith)
         Rb = cos_tt / np.maximum(cos_solar_zenith, 0.01745)  # GH 432
         circumsolar = dhi * (AI * Rb)
+        poa_sky_pv = _poa_sky_diffuse_pv(
+            f_x, dhi, vf_shade_sky, vf_noshade_sky, model, AI)
     else:
-        # TODO need update for different data structures e.g. pd vs dict
-        AI = 1 # keep as 0 to keep term2 in haydavies portion 
-        circumsolar = 0 # this is not elegent, but first pass
-    poa_sky_pv = _poa_sky_diffuse_pv(
-        f_x, dhi, vf_shade_sky, vf_noshade_sky, AI)
+        poa_sky_pv = _poa_sky_diffuse_pv(
+            f_x, dhi, vf_shade_sky, vf_noshade_sky, model)
 
     # irradiance reflected from the ground before accounting for shadows
     # and restricted views
@@ -591,7 +590,8 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
     # beam on plane, make an array for consistency with poa_diffuse
     poa_beam = np.atleast_1d(beam_component(
         surface_tilt, surface_azimuth, solar_zenith, solar_azimuth, dni))
-    poa_beam = poa_beam + circumsolar # add circumsolar back into poa_beam
+    if model='haydavies':
+        poa_beam = poa_beam + circumsolar # add circumsolar back into poa_beam
     poa_direct = poa_beam * (1 - f_x) * iam  # direct only on the unshaded part
     poa_global = poa_direct + poa_diffuse
 
