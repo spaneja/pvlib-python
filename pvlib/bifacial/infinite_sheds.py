@@ -590,7 +590,7 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
     # beam on plane, make an array for consistency with poa_diffuse
     poa_beam = np.atleast_1d(beam_component(
         surface_tilt, surface_azimuth, solar_zenith, solar_azimuth, dni))
-    if model='haydavies':
+    if model=='haydavies':
         poa_beam = poa_beam + circumsolar # add circumsolar back into poa_beam
     poa_direct = poa_beam * (1 - f_x) * iam  # direct only on the unshaded part
     poa_global = poa_direct + poa_diffuse
