@@ -7,7 +7,7 @@ import pandas as pd
 from pvlib.tools import cosd, sind, tand
 from pvlib.bifacial import utils
 from pvlib.shading import masking_angle
-from pvlib.irradiance import beam_component, aoi, aoi_projection
+from pvlib.irradiance import beam_component, aoi, haydavies
 
 
 def _vf_ground_sky_integ(surface_tilt, surface_azimuth, gcr, height,
@@ -155,8 +155,7 @@ def _vf_row_sky_integ(f_x, surface_tilt, gcr, npoints=100):
     return vf_shade_sky_integ, vf_noshade_sky_integ
 
 
-def _poa_sky_diffuse_pv(f_x, dhi, vf_shade_sky_integ, vf_noshade_sky_integ,
-                        model='isotropic', AI=None):
+def _poa_sky_diffuse_pv(f_x, dhi, vf_shade_sky_integ, vf_noshade_sky_integ):
     """
     Sky diffuse POA from integrated view factors combined for both shaded and
     unshaded parts of the surface.
@@ -179,13 +178,7 @@ def _poa_sky_diffuse_pv(f_x, dhi, vf_shade_sky_integ, vf_noshade_sky_integ,
     poa_sky_diffuse_pv : numeric
         Total sky diffuse irradiance incident on the PV surface. [W/m^2]
     """
-    if model=='haydavies':
-        term1 = f_x * vf_shade_sky_integ + (1 - f_x) * vf_noshade_sky_integ
-        term2 = 1 - AI
-        return dhi * term1 * term2
-    else:
-        return dhi * (f_x * vf_shade_sky_integ + (1 - f_x) * \
-                      vf_noshade_sky_integ)
+    return dhi * (f_x * vf_shade_sky_integ + (1 - f_x) * vf_noshade_sky_integ)
 
 
 def _ground_angle(x, surface_tilt, gcr):
@@ -465,6 +458,12 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
     albedo : numeric
         Surface albedo. [unitless]
 
+    dni_extra : numeric
+        Extraterrestrial direct normal irradiance. [W/m2]
+
+    model : str
+        Irradiance model - can be one of 'isotropic' of 'haydavies'.
+
     iam : numeric, default 1.0
         Incidence angle modifier, the fraction of direct irradiance incident
         on the surface that is not reflected away. [unitless]
@@ -503,10 +502,16 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
     --------
     get_irradiance
     """
-    # raise error if user selects haydavies, but does not supply dni_extra
     if model=='haydavies':
-        if dni_extra==None:
+        if dni_extra is None:
             raise ValueError(f'must supply dni_extra for {model} model')
+        # adjust horizontal irradiance (dhi and dni)
+        sky_diffuse_components = haydavies(0, 180, dhi, dni, dni_extra,
+                                           solar_zenith, solar_azimuth,
+                                           return_components=True)
+
+        dhi = dhi - sky_diffuse_components['circumsolar']
+        dni = (ghi - dhi) / cosd(solar_zenith)
 
     # Calculate some geometric quantities
     # rows to consider in front and behind current row
@@ -544,19 +549,8 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
         f_x, surface_tilt, gcr, npoints)
 
     # Total sky diffuse received by both shaded and unshaded portions
-    if model=='haydavies':
-        AI = dni / dni_extra
-        cos_tt = aoi_projection(surface_tilt, surface_azimuth, solar_zenith,
-                                solar_azimuth)
-        cos_tt = np.maximum(cos_tt, 0)  # GH 526
-        cos_solar_zenith = cosd(solar_zenith)
-        Rb = cos_tt / np.maximum(cos_solar_zenith, 0.01745)  # GH 432
-        circumsolar = dhi * (AI * Rb)
-        poa_sky_pv = _poa_sky_diffuse_pv(
-            f_x, dhi, vf_shade_sky, vf_noshade_sky, model, AI)
-    else:
-        poa_sky_pv = _poa_sky_diffuse_pv(
-            f_x, dhi, vf_shade_sky, vf_noshade_sky, model)
+    poa_sky_pv = _poa_sky_diffuse_pv(
+        f_x, dhi, vf_shade_sky, vf_noshade_sky)
 
     # irradiance reflected from the ground before accounting for shadows
     # and restricted views
@@ -590,8 +584,6 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
     # beam on plane, make an array for consistency with poa_diffuse
     poa_beam = np.atleast_1d(beam_component(
         surface_tilt, surface_azimuth, solar_zenith, solar_azimuth, dni))
-    if model=='haydavies':
-        poa_beam = poa_beam + circumsolar # add circumsolar back into poa_beam
     poa_direct = poa_beam * (1 - f_x) * iam  # direct only on the unshaded part
     poa_global = poa_direct + poa_diffuse
 
@@ -668,6 +660,12 @@ def get_irradiance(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth,
 
     albedo : numeric
         Surface albedo. [unitless]
+        
+    dni_extra : numeric
+        Extraterrestrial direct normal irradiance. [W/m2]
+        
+    model : str
+        Irradiance model - can be one of 'isotropic' of 'haydavies'.
 
     iam_front : numeric, default 1.0
         Incidence angle modifier, the fraction of direct irradiance incident
