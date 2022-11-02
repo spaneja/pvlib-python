@@ -462,7 +462,7 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
         Extraterrestrial direct normal irradiance. [W/m2]
 
     model : str
-        Irradiance model - can be one of 'isotropic' of 'haydavies'.
+        Irradiance model - can be one of 'isotropic' or 'haydavies'.
 
     iam : numeric, default 1.0
         Incidence angle modifier, the fraction of direct irradiance incident
@@ -505,11 +505,10 @@ def get_irradiance_poa(surface_tilt, surface_azimuth, solar_zenith,
     if model=='haydavies':
         if dni_extra is None:
             raise ValueError(f'must supply dni_extra for {model} model')
-        # adjust horizontal irradiance (dhi and dni)
+        # call haydavies function and request components to help adjust dni/dhi
         sky_diffuse_components = haydavies(0, 180, dhi, dni, dni_extra,
-                                           solar_zenith, solar_azimuth,
+                                           projection_ratio=1,
                                            return_components=True)
-
         dhi = dhi - sky_diffuse_components['circumsolar']
         dni = (ghi - dhi) / cosd(solar_zenith)
 
@@ -665,7 +664,7 @@ def get_irradiance(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth,
         Extraterrestrial direct normal irradiance. [W/m2]
         
     model : str
-        Irradiance model - can be one of 'isotropic' of 'haydavies'.
+        Irradiance model - can be one of 'isotropic' or 'haydavies'.
 
     iam_front : numeric, default 1.0
         Incidence angle modifier, the fraction of direct irradiance incident
